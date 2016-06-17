@@ -1,12 +1,12 @@
 package br.com.shs.atividadepratica.servlet;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
-import java.util.Collection;
+import java.io.Writer;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.Enumeration;
 
 import javax.servlet.ServletException;
@@ -17,14 +17,22 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.Part;
 
+import com.amazonaws.regions.Region;
+import com.amazonaws.regions.Regions;
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.AmazonS3Client;
+import com.amazonaws.services.s3.model.ObjectMetadata;
+import com.amazonaws.services.s3.model.PutObjectRequest;
+
 
 @WebServlet(urlPatterns = {"/upload"}, description = "Servlet que recebe o arquivo de video a ser convertido.")
-@MultipartConfig(fileSizeThreshold=1024*1024*2, // 2MB
+@MultipartConfig/*(fileSizeThreshold=1024*1024*2, // 2MB
                  maxFileSize=1024*1024*10,      // 10MB
-                 maxRequestSize=1024*1024*50)   // 50MB
+                 maxRequestSize=1024*1024*50)   // 50MB*/
 public class FileUploaderServlet extends HttpServlet {
+	private static final String BUCKET_NAME = "testesamba";
 	private static final long serialVersionUID = 1L;
-	private static final String BOUNDARY_STRING = "boundary=";
+	private SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd-HHmmss");
        
     /**
      * @see HttpServlet#HttpServlet()
@@ -35,6 +43,10 @@ public class FileUploaderServlet extends HttpServlet {
     
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    	Writer w = resp.getWriter();
+    	w.write("Oi, "+new Date());
+    	w.flush();
+    	w.close();
     }
 
 	/**
@@ -57,41 +69,52 @@ public class FileUploaderServlet extends HttpServlet {
 			System.out.println(nome + "=" + request.getHeader(nome));
 		}
 		
-		int posicaoBoundary = cabecalho.indexOf("boundary=");
+		Part uploadedVideo = request.getPart("videoParaConverter");
 		
-		String str = cabecalho.substring(posicaoBoundary+BOUNDARY_STRING.length());
-		
-		//String boundary = cabecalho.indexOf("boundary=");
-		
-		InputStream is = request.getInputStream();
-		File file = new File("C:\\Documents and Settings\\sergio\\Desktop\\conteudo_post.txt");
-		FileOutputStream out = null;
-		byte[] buffer = new byte[1024*4];
-		int qtdBytes = 0;
-		
-		try {
-			while((qtdBytes = is.read(buffer)) != -1){
-				
-				if(out == null){
-					out = new FileOutputStream(file);
+		if(uploadedVideo != null){
+			String nomeOriginal = uploadedVideo.getHeader("Content-Disposition").replaceFirst(".*filename=\"([^\"]+)\".*", "$1");
+			InputStream is = uploadedVideo.getInputStream();
+			File file = File.createTempFile(nomeOriginal, "");
+			
+			FileOutputStream out = null;
+			byte[] buffer = new byte[1024*64];
+			int qtdBytes = 0;
+			
+			try {
+				while((qtdBytes = is.read(buffer)) != -1){
+					
+					if(out == null){
+						out = new FileOutputStream(file);
+					}
+					
+					out.write(buffer, 0, qtdBytes);
 				}
 				
-				out.write(buffer, 0, qtdBytes);
+				AmazonS3 s3 = new AmazonS3Client();
+		        Region usWest2 = Region.getRegion(Regions.SA_EAST_1);
+		        s3.setRegion(usWest2);
+		        
+		        PutObjectRequest putObjRequest = new PutObjectRequest(BUCKET_NAME, sdf.format(new Date()) + nomeOriginal, file);
+		        
+		        ObjectMetadata metadata = new ObjectMetadata();
+		        metadata.setContentType(uploadedVideo.getContentType());
+		        
+		        putObjRequest.setMetadata(metadata);
+		        
+		        s3.putObject(putObjRequest);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}finally{
+				if(is != null){
+					is.close();
+				}
+				
+				if(out != null){
+					out.close();
+				}
 			}
-		} catch (Exception e) {
-			e.printStackTrace();
-		}finally{
-			if(is != null){
-				is.close();
-			}
-			
-			if(out != null){
-				out.close();
-			}
-			
-			//file.delete();
 		}
 		
-		response.sendRedirect("/");
+		response.sendRedirect(request.getServletContext().getContextPath());
 	}
 }
