@@ -72,6 +72,12 @@ public class FileUploaderServlet extends HttpServlet {
 		Part uploadedVideo = request.getPart("videoParaConverter");
 		
 		if(uploadedVideo != null){
+			
+			if(!uploadedVideo.getContentType().startsWith("video/")){
+				response.sendError(HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE);
+				return;
+			}
+			
 			String nomeOriginal = uploadedVideo.getHeader("Content-Disposition").replaceFirst(".*filename=\"([^\"]+)\".*", "$1");
 			InputStream is = uploadedVideo.getInputStream();
 			File file = File.createTempFile(nomeOriginal, "");
