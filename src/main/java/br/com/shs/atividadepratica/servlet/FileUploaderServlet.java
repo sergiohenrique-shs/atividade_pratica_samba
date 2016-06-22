@@ -12,15 +12,22 @@ import java.util.Enumeration;
 import javax.servlet.ServletException;
 import javax.servlet.annotation.MultipartConfig;
 import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.Part;
 
+import sun.misc.BASE64Encoder;
+
+import br.com.shs.atividadepratica.dto.ZencoderInput;
+import br.com.shs.atividadepratica.services.ZenCoderService;
+
 import com.amazonaws.regions.Region;
 import com.amazonaws.regions.Regions;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
+import com.amazonaws.services.s3.model.CannedAccessControlList;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.PutObjectRequest;
 
@@ -31,6 +38,7 @@ import com.amazonaws.services.s3.model.PutObjectRequest;
                  maxRequestSize=1024*1024*50)   // 50MB*/
 public class FileUploaderServlet extends HttpServlet {
 	private static final String BUCKET_NAME = "testesamba";
+	private static final String COOKIE_VIDEOS = "s3-testesamba-my-videos";
 	private static final long serialVersionUID = 1L;
 	private SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd-HHmmss");
        
@@ -43,30 +51,17 @@ public class FileUploaderServlet extends HttpServlet {
     
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-    	Writer w = resp.getWriter();
-    	w.write("Oi, "+new Date());
-    	w.flush();
-    	w.close();
     }
 
 	/**
 	 * @see HttpServlet#doPost(HttpServletRequest request, HttpServletResponse response)
 	 */
 	protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
-		//multipart/form-data; boundary=---------------------------1384145104390
-		
 		String cabecalho = request.getHeader("Content-Type");
 
 		if(!cabecalho.contains("multipart/form-data;")){
 			response.sendError(HttpServletResponse.SC_NOT_IMPLEMENTED);
 			return;
-		}
-		
-		Enumeration<String> headers = request.getHeaderNames();
-		
-		while(headers.hasMoreElements()){
-			String nome = headers.nextElement();
-			System.out.println(nome + "=" + request.getHeader(nome));
 		}
 		
 		Part uploadedVideo = request.getPart("videoParaConverter");
@@ -79,6 +74,7 @@ public class FileUploaderServlet extends HttpServlet {
 			}
 			
 			String nomeOriginal = uploadedVideo.getHeader("Content-Disposition").replaceFirst(".*filename=\"([^\"]+)\".*", "$1");
+			String nomeComTimestamp = sdf.format(new Date()) + "_" + nomeOriginal;
 			InputStream is = uploadedVideo.getInputStream();
 			File file = File.createTempFile(nomeOriginal, "");
 			
@@ -100,7 +96,7 @@ public class FileUploaderServlet extends HttpServlet {
 		        Region usWest2 = Region.getRegion(Regions.SA_EAST_1);
 		        s3.setRegion(usWest2);
 		        
-		        PutObjectRequest putObjRequest = new PutObjectRequest(BUCKET_NAME, sdf.format(new Date()) + nomeOriginal, file);
+		        PutObjectRequest putObjRequest = new PutObjectRequest(BUCKET_NAME, nomeComTimestamp, file);
 		        
 		        ObjectMetadata metadata = new ObjectMetadata();
 		        metadata.setContentType(uploadedVideo.getContentType());
@@ -108,6 +104,26 @@ public class FileUploaderServlet extends HttpServlet {
 		        putObjRequest.setMetadata(metadata);
 		        
 		        s3.putObject(putObjRequest);
+		        
+		        //Torna o video publico para leitura
+		        s3.setObjectAcl(BUCKET_NAME, nomeComTimestamp, CannedAccessControlList.PublicRead);
+		        
+		        ZencoderInput input = new ZencoderInput();
+		        
+		        input.setBucketName(BUCKET_NAME);
+		        input.setFileName(nomeComTimestamp);
+		        
+		        ZenCoderService service = new ZenCoderService();
+		        String jsonJob = service.converter(input);
+		        
+//		        Cookie cookieVideos = new Cookie(COOKIE_VIDEOS, "");
+//		        
+//		        String dadosCookie = "{\"s3File\":\""+nomeComTimestamp+"\",jsonJob:["+jsonJob+"]}";
+//		        
+//		        BASE64Encoder base64Enc = new BASE64Encoder();
+//		        cookieVideos.setValue( base64Enc.encode(dadosCookie.getBytes()) );
+//		        
+//		        response.addCookie(cookieVideos);
 			} catch (Exception e) {
 				e.printStackTrace();
 			}finally{
@@ -118,9 +134,11 @@ public class FileUploaderServlet extends HttpServlet {
 				if(out != null){
 					out.close();
 				}
+				
+				file.delete();
 			}
 		}
 		
-		response.sendRedirect(request.getServletContext().getContextPath());
+		response.sendRedirect(request.getServletContext().getContextPath() + "/pages/lista_videos.jsp");
 	}
 }

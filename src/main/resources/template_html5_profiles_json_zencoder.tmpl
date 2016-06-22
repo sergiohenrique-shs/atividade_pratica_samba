@@ -1,0 +1,26 @@
+{
+  "input": "s3://##BUCKET_NAME##/##FILE_INPUT_NAME##.##FILE_INPUT_EXTENSION##",
+  "test": true,
+  "outputs": [
+    {
+      "label": "mp4 high",
+      "url": "s3://##BUCKET_NAME##/##FILE_INPUT_NAME##.mp4",
+      "h264_profile": "high"
+    },
+    {
+      "url": "s3://##BUCKET_NAME##/##FILE_INPUT_NAME##.webm",
+      "label": "webm",
+      "format": "webm"
+    },
+    {
+      "url": "s3://##BUCKET_NAME##/##FILE_INPUT_NAME##.ogg",
+      "label": "ogg",
+      "format": "ogg"
+    },
+    {
+      "url": "s3://##BUCKET_NAME##/##FILE_INPUT_NAME##.mp4",
+      "label": "mp4 low",
+      "size": "640x480"
+    }
+  ]
+}
